@@ -4,10 +4,13 @@ var div = require('vectors/div')(3)
 var createBuffer = require('gl-buffer')
 var createVAO = require('gl-vao')
 var continuous = require('ndarray-continuous')
+var stencil = require('ndarray-stencil')
 
 var ndarray = require('ndarray')
 var fill = require('ndarray-fill')
 var createAOMesh = require('ao-mesher')
+
+var TIMING = true
 
 var identityMatrix = [
   1,0,0,0,
@@ -18,8 +21,8 @@ var identityMatrix = [
 var scratch0 = new Int32Array(12)
 var scratch1 = new Int32Array(12)
 
-function VoxelChunky(gl, opts) {
-  if (!(this instanceof VoxelChunky)) return new VoxelChunky(gl, opts)
+function VoxelInfinite(gl, opts) {
+  if (!(this instanceof VoxelInfinite)) return new VoxelInfinite(gl, opts)
   opts = opts || {}
   this.gl = gl
   // If the default generator should use a worker
@@ -29,9 +32,12 @@ function VoxelChunky(gl, opts) {
   // The shape of each chunk
   this.shape = opts.shape || [32,32,32]
   // The shape distance we create/destory chunks
-  this.distance = opts.distance || [ [-4,-2,-4], [4,2,4] ]
+  this.distance = opts.distance || [ [-6,-2,-6], [4,2,4] ]
 
-  this.grid = continuous({
+  // The shape of chunks to load
+  //this.stencil = opts.stencil || this.createDefaultStencil()
+
+  this.model = continuous({
     shape: this.shape,
     // getter: function(pos, done) {
     //   var arr = ndarray(new Int32Array(32 * 32 * 32), [32,32,32])
@@ -61,10 +67,10 @@ function VoxelChunky(gl, opts) {
   // Last know position for more efficient loading
   this._lastPosition = [null, null, null]
 }
-module.exports = VoxelChunky
+module.exports = VoxelInfinite
 
 // Render all chunks in within the distance of this position
-VoxelChunky.prototype.position = function(pos) {
+VoxelInfinite.prototype.position = function(pos) {
   var self = this
   var last = this._lastPosition
 
@@ -78,6 +84,10 @@ VoxelChunky.prototype.position = function(pos) {
   this._lastPosition = [ scratch0[0], scratch0[1], scratch0[2] ]
   console.log('position', scratch0)
 
+  // TODO: Use ndarrays and stencils here
+  // TODO: Add a level of detail ability too
+  var lod = 1
+
   // Add new chunks
   // TODO: Render chunks directly in front of player first
   scratch1[0] = Math.ceil(Math.abs(this.distance[0][0]) + Math.abs(this.distance[1][0])) / 2
@@ -90,11 +100,11 @@ VoxelChunky.prototype.position = function(pos) {
         var p = [i,j,k]
         var id = p.join('|')
         valid[id] = true
-        if (self.cache[id]) return
-        self.grid.chunk(p, function(err, chunk) {
+        if (self.cache[id] && self.cache[id].vertexCount > 0) continue
+        self.model.chunk(p, function(err, chunk) {
           if (err) return
           //setTimeout(function() {
-            self.generate(p, chunk)
+            self.generate(p, chunk, lod)
           //}, Math.random() * 100)
         })
       }
@@ -112,28 +122,28 @@ VoxelChunky.prototype.position = function(pos) {
   return this
 }
 
-VoxelChunky.prototype.getBlock = function(pos) {
-  return this.grid.get(pos)
+VoxelInfinite.prototype.getBlock = function(pos) {
+  return this.model.get(pos)
 }
 
-VoxelChunky.prototype.setBlock = function(pos, idx) {
+VoxelInfinite.prototype.setBlock = function(pos, idx) {
   var self = this
   // TODO: Debounce this for multiple setBlock calls?
-  this.grid.set(pos, idx)
+  this.model.set(pos, idx)
   // var chunkPos = [
   //   Math.floor(pos[0] / this.shape[0]),
   //   Math.floor(pos[1] / this.shape[1]),
   //   Math.floor(pos[2] / this.shape[2]),
   // ]
   // // TODO: Set chunk to hasChanged  
-  // this.grid.chunk(chunkPos, function(err, chunk) {
+  // this.model.chunk(chunkPos, function(err, chunk) {
   //   if (err) return
   //   self.generate(chunkPos, chunk)
   // })
 }
 
 // Load a meshed chunk to be rendered
-VoxelChunky.prototype.load = function(pos, vert_data) {
+VoxelInfinite.prototype.load = function(pos, vert_data) {
   var gl = this.gl
   var mesh = {
     //data: vert_data,
@@ -161,7 +171,7 @@ VoxelChunky.prototype.load = function(pos, vert_data) {
 }
 
 // Draw all chunks
-VoxelChunky.prototype.draw = function(opts) {
+VoxelInfinite.prototype.draw = function(opts) {
   var gl = this.gl
   opts = opts || {}
   var shader = this.shader
@@ -186,7 +196,7 @@ VoxelChunky.prototype.draw = function(opts) {
     var mesh = this.cache[key]
     if (!mesh) continue
     if (mesh.vertexCount < 1) {
-      //delete this.cache[key]
+      delete this.cache[key]
       continue
     }
 
@@ -206,30 +216,43 @@ VoxelChunky.prototype.draw = function(opts) {
   }
 }
 
-VoxelChunky.prototype.createDefaultGenerate = function(fn) {
+// VoxelInfinite.prototype.createDefaultStencil = function() {
+//   var arr = ndarray(new Int8Array(10 * 10 * 10), [10, 10, 10])
+//   for (var i = 3; i < 7; ++i) {
+//     for (var j = 4; j < 6; ++j) {
+//       for (var k = 3; k < 7; ++k) {
+//         arr.set(i, j, k, 1)
+//       }
+//     }
+//   }
+//   return arr
+// }
+
+VoxelInfinite.prototype.createDefaultGenerate = function(fn) {
   var self = this
   var generate = null
   if (self.useWorker) {
     var createWorker = require('webworkify')
     var worker = createWorker(require('./lib/default-generate.js'))
-    generate = function(pos, chunk) {
+    generate = function(pos, chunk, lod) {
       var msg = {
         chunk: new Int32Array(chunk.data),
         pos: new Int8Array(pos),
         shape: new Int8Array(chunk.shape),
       }
-      //console.time('meshed ' + pos.join('|'))
+      if (TIMING) console.log('generating ', pos)
+      if (TIMING) console.time('meshed ' + pos.join('|'))
       worker.postMessage(msg, [msg.chunk.buffer, msg.pos.buffer, msg.shape.buffer])
     }
     worker.addEventListener('message', function(e) {
       var pos = [e.data.pos[0], e.data.pos[1], e.data.pos[2]]
       var mesh = e.data.mesh
-      //console.timeEnd('meshed ' + pos.join('|'))
+      if (TIMING) console.timeEnd('meshed ' + pos.join('|'))
       self.load(pos, mesh)
     })
   } else {
     var createAOMesh = require('ao-mesher')
-    generate = function(pos, chunk) {
+    generate = function(pos, chunk, lod) {
       var mesh = createAOMesh(chunk)
       if (mesh) self.load(pos, mesh)
     }
@@ -237,7 +260,7 @@ VoxelChunky.prototype.createDefaultGenerate = function(fn) {
   return generate
 }
 
-VoxelChunky.prototype.createDefaultShader = function() {
+VoxelInfinite.prototype.createDefaultShader = function() {
   var createAOShader = require('ao-shader')
   return createAOShader(this.gl)
 }

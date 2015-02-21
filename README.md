@@ -1,14 +1,14 @@
-# voxel-chunky
+# voxel-infinite
 
 ## example
 
 ```js
-var createChunky = require('voxel-chunky')
+var createInfinite = require('voxel-infinite')
 
 var createViewer = require('mesh-viewer')
 var mat4 = require('gl-mat4')
 
-var chunky
+var infinite
 
 var viewer = createViewer({
   useCellNormals: false,
@@ -21,8 +21,8 @@ var viewer = createViewer({
 viewer.on('viewer-init', function() {
   var gl = this.gl
 
-  // Create an instance of chunky
-  chunky = createChunky(gl, {
+  // Create an instance of infinite
+  infinite = createInfinite(gl, {
     // Give a method to generate chunks
     generator: function(i,j,k) {
       var x = i - 16
@@ -36,7 +36,7 @@ viewer.on('viewer-init', function() {
   })
 
   // Set the position (of camera, player, focus, etc)
-  chunky.position([0,0,0])
+  infinite.position([0,0,0])
 
   // Set the camera to look at the center of 0,0,0
   var c = [shape[0]>>>1, shape[1]>>>1, shape[0]>>>1]
@@ -50,8 +50,8 @@ viewer.on('gl-render', function() {
   gl.enable(gl.CULL_FACE)
   gl.enable(gl.DEPTH_TEST)
 
-  // Draw all chunky chunks
-  chunky.draw({
+  // Draw all infinite chunks
+  infinite.draw({
     view: this.camera.view(),
     projection: mat4.perspective(A, Math.PI/4.0, this.width/this.height, 1.0, 1000.0),
   })
@@ -61,17 +61,17 @@ viewer.on('gl-render', function() {
 ## install
 
 ```shell
-npm install voxel-chunky --save
+npm install voxel-infinite --save
 ```
 
 ## api
 
 ```js
-var createChunky = require('voxel-chunky')
+var createInfinite = require('voxel-infinite')
 ```
 
-### `var chunky = createChunky(gl, params)`
-Creates a chunky mesh handler.
+### `var infinite = createInfinite(gl, params)`
+Creates a infinite mesh handler.
 
 * `gl` - is a handle to a WebGL context
 * `params` is an object that has the following properties:
@@ -97,8 +97,6 @@ Creates a chunky mesh handler.
 
 
 IDEAS
-
-Rename to voxel-infinity
 
 Should be createMesh(pos, chunk)
 setBlock() should createMesh() on the right chunk and set hasChanged: true on the chunk

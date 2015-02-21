@@ -1,4 +1,4 @@
-var Chunky = require('../voxel-chunky.js')
+var createInfinite = require('../voxel-infinite.js')
 
 var Viewer = require('mesh-viewer')
 var mat4 = require('gl-mat4')
@@ -7,9 +7,9 @@ var createTileMap = require('gl-tile-map')
 var terrain = require('isabella-texture-pack')
 var createSelect = require('gl-select')
 var createCamera = require('voxel-player-camera')
-//var createCam = require('game-shell-fps-cam')
+var createCam = require('game-shell-fps-cam')
 
-var select, texture, chunky, cam
+var select, texture, infinite, cam
 var shape = [32, 32, 32]
 var TILE_COUNT = 16
 var TILE_SIZE = Math.floor(terrain.shape[0] / TILE_COUNT)|0
@@ -31,8 +31,9 @@ viewer.on('viewer-init', function() {
   var gl = this.gl
 
   this.camera = createCamera()
+  //this.camera = createCam(this)
 
-  chunky = new Chunky(gl, {
+  infinite = createInfinite(gl, {
     generator: function(i,j,k) {
       var x = i - 16
       var y = j - 16
@@ -47,10 +48,11 @@ viewer.on('viewer-init', function() {
     //   worker.postMessage(msg, [msg.pos.buffer, msg.shape.buffer])
     // },
   })
-  chunky.position([0,0,0])
+  infinite.position([0,0,0])
 
   setInterval(function() {
-    chunky.position(this.camera.position())
+    infinite.position(this.camera.position())
+    //infinite.position(this.camera.position)
   }.bind(this), 500)
 
   setInterval(function() {
@@ -58,7 +60,7 @@ viewer.on('viewer-init', function() {
     var y = rand(-50, 50)
     var z = rand(-50, 50)
     //console.log('set', [x,y,z])
-    chunky.setBlock([x,y,z], 1+(15<<1))
+    infinite.setBlock([x,y,z], 1+(15<<1))
   }, 200)
 
   //select = createSelect(gl, [this.width, this.height])
@@ -80,7 +82,7 @@ viewer.on('gl-render', function() {
   gl.enable(gl.CULL_FACE)
   gl.enable(gl.DEPTH_TEST)
 
-  chunky.draw({
+  infinite.draw({
     view: this.camera.view(),
     projection: mat4.perspective(A, Math.PI/4.0, this.width/this.height, 1.0, 1000.0),
     texture: texture,
@@ -105,16 +107,8 @@ viewer.on('tick', function() {
   ])
   if (this.pointerLock) {
     this.camera.rotate(
-      // [this.mouseX/this.width-0.5, 0],
-      // [this.prevMouseX/this.width-0.5, 0]
       [this.mouseX/this.width-0.5, this.mouseY/this.height-0.5, 0],
       [this.prevMouseX/this.width-0.5, this.prevMouseY/this.height-0.5, 0]
     )
-
-    //console.log(this.camera.center)
-    //chunky.position(this.camera.center)
   }
-
-  //var A = this.down('A')
-  //console.log('tick', A)
 })

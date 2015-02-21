@@ -29,6 +29,7 @@
     "ndarray": "^1.0.16",
     "ndarray-continuous": "^0.4.2",
     "ndarray-fill": "^1.0.1",
+    "ndarray-stencil": "^0.1.4",
     "vectors": "^0.1.0",
     "webworkify": "^1.0.2"
   }
