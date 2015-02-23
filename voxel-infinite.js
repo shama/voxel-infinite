@@ -4,13 +4,11 @@ var div = require('vectors/div')(3)
 var createBuffer = require('gl-buffer')
 var createVAO = require('gl-vao')
 var continuous = require('ndarray-continuous')
-var stencil = require('ndarray-stencil')
 
-var ndarray = require('ndarray')
-var fill = require('ndarray-fill')
-var createAOMesh = require('ao-mesher')
+//var stencil = require('ndarray-stencil')
+//var ndarray = require('ndarray')
 
-var TIMING = true
+var TIMING = false
 
 var identityMatrix = [
   1,0,0,0,
@@ -28,35 +26,19 @@ function VoxelInfinite(gl, opts) {
   // If the default generator should use a worker
   this.useWorker = opts.useWorker !== false
   // The method to call when we need to generate a chunk
-  this.generate = opts.generate || this.createDefaultGenerate(opts.generator)
+  this.createMesh = opts.mesher || this.createDefaultMesher()
   // The shape of each chunk
   this.shape = opts.shape || [32,32,32]
   // The shape distance we create/destory chunks
-  this.distance = opts.distance || [ [-6,-2,-6], [4,2,4] ]
+  this.distance = opts.distance || [ [-4,-2,-4], [4,2,4] ]
 
   // The shape of chunks to load
   //this.stencil = opts.stencil || this.createDefaultStencil()
 
-  this.model = continuous({
-    shape: this.shape,
-    // getter: function(pos, done) {
-    //   var arr = ndarray(new Int32Array(32 * 32 * 32), [32,32,32])
-    //   return done(null, arr)
-    // }
-    getter: function(position, done) {
-      var arr = ndarray(new Int32Array(32 * 32 * 32), [32,32,32])
-      fill(arr, function(i,j,k) {
-        var x = i - 16
-        var y = j - 16
-        var z = k - 16
-        if (x*x+y*y+z*z < 30) {
-          return (1<<15) + 0x18
-        }  
-        return 0
-      })
-      return done(null, arr)
-    }
-  })
+  // Setup ndarray-continuous
+  var continuousOpts = {shape: this.shape}
+  if (opts.generate) continuousOpts.getter = opts.generate
+  this.data = continuous(continuousOpts)
 
   // The cache of current chunks
   this.cache = Object.create(null)
@@ -82,7 +64,7 @@ VoxelInfinite.prototype.position = function(pos) {
   // Are we at the same position the last time we checked?
   if (scratch0[0] === last[0] && scratch0[1] === last[1] && scratch0[2] === last[2]) return this
   this._lastPosition = [ scratch0[0], scratch0[1], scratch0[2] ]
-  console.log('position', scratch0)
+  if (TIMING) console.log('position', scratch0)
 
   // TODO: Use ndarrays and stencils here
   // TODO: Add a level of detail ability too
@@ -101,10 +83,10 @@ VoxelInfinite.prototype.position = function(pos) {
         var id = p.join('|')
         valid[id] = true
         if (self.cache[id] && self.cache[id].vertexCount > 0) continue
-        self.model.chunk(p, function(err, chunk) {
+        self.data.chunk(p, function(err, chunk) {
           if (err) return
           //setTimeout(function() {
-            self.generate(p, chunk, lod)
+            self.createMesh(p, chunk, lod)
           //}, Math.random() * 100)
         })
       }
@@ -123,27 +105,28 @@ VoxelInfinite.prototype.position = function(pos) {
 }
 
 VoxelInfinite.prototype.getBlock = function(pos) {
-  return this.model.get(pos)
+  return this.data.get(pos)
 }
 
 VoxelInfinite.prototype.setBlock = function(pos, idx) {
   var self = this
   // TODO: Debounce this for multiple setBlock calls?
-  this.model.set(pos, idx)
-  // var chunkPos = [
-  //   Math.floor(pos[0] / this.shape[0]),
-  //   Math.floor(pos[1] / this.shape[1]),
-  //   Math.floor(pos[2] / this.shape[2]),
-  // ]
-  // // TODO: Set chunk to hasChanged  
-  // this.model.chunk(chunkPos, function(err, chunk) {
-  //   if (err) return
-  //   self.generate(chunkPos, chunk)
-  // })
+  this.data.set(pos, idx)
+  // TODO: Only re-render chunk if within distance
+  var chunkPos = [
+    Math.floor(pos[0] / this.shape[0]),
+    Math.floor(pos[1] / this.shape[1]),
+    Math.floor(pos[2] / this.shape[2]),
+  ]
+  // TODO: Set chunk to hasChanged  
+  this.data.chunk(chunkPos, function(err, chunk) {
+    if (err) return
+    self.createMesh(chunkPos, chunk)
+  })
 }
 
 // Load a meshed chunk to be rendered
-VoxelInfinite.prototype.load = function(pos, vert_data) {
+VoxelInfinite.prototype.loadMesh = function(pos, vert_data) {
   var gl = this.gl
   var mesh = {
     //data: vert_data,
@@ -170,6 +153,12 @@ VoxelInfinite.prototype.load = function(pos, vert_data) {
   this.cache[pos.join('|')] = mesh
 }
 
+VoxelInfinite.prototype.unloadMesh = function(pos) {
+  if (typeof pos !== 'string') pos = pos.join('|')
+  // TODO: This should check if the data chunk has changed, if not remove it from memory
+  delete this.cache[pos]
+}
+
 // Draw all chunks
 VoxelInfinite.prototype.draw = function(opts) {
   var gl = this.gl
@@ -186,8 +175,9 @@ VoxelInfinite.prototype.draw = function(opts) {
     if (opts.texture) {
       shader.uniforms.tileMap = opts.texture.bind()
     }
-    shader.uniforms.tileCount = opts.tileCount || 16
-    shader.uniforms.tileSize = opts.tileSize || Math.floor(256 / TILE_COUNT)|0
+    var tileCount = opts.tileCount || 16
+    shader.uniforms.tileCount = tileCount
+    shader.uniforms.tileSize = opts.tileSize || Math.floor(256 / tileCount)|0
   }
 
   var keys = Object.keys(this.cache)
@@ -196,7 +186,7 @@ VoxelInfinite.prototype.draw = function(opts) {
     var mesh = this.cache[key]
     if (!mesh) continue
     if (mesh.vertexCount < 1) {
-      delete this.cache[key]
+      this.unloadMesh(key)
       continue
     }
 
@@ -207,6 +197,7 @@ VoxelInfinite.prototype.draw = function(opts) {
         mesh.pos[1] * this.shape[1],
         mesh.pos[2] * this.shape[2],
       ])
+      //mat4.scale(m, m, [2, 2, 2])
       shader.uniforms.model = m
     }
 
@@ -228,19 +219,18 @@ VoxelInfinite.prototype.draw = function(opts) {
 //   return arr
 // }
 
-VoxelInfinite.prototype.createDefaultGenerate = function(fn) {
+VoxelInfinite.prototype.createDefaultMesher = function() {
   var self = this
-  var generate = null
+  var mesher = null
   if (self.useWorker) {
     var createWorker = require('webworkify')
-    var worker = createWorker(require('./lib/default-generate.js'))
-    generate = function(pos, chunk, lod) {
+    var worker = createWorker(require('./lib/default-mesher.js'))
+    mesher = function(pos, chunk, lod) {
       var msg = {
         chunk: new Int32Array(chunk.data),
         pos: new Int8Array(pos),
         shape: new Int8Array(chunk.shape),
       }
-      if (TIMING) console.log('generating ', pos)
       if (TIMING) console.time('meshed ' + pos.join('|'))
       worker.postMessage(msg, [msg.chunk.buffer, msg.pos.buffer, msg.shape.buffer])
     }
@@ -248,16 +238,16 @@ VoxelInfinite.prototype.createDefaultGenerate = function(fn) {
       var pos = [e.data.pos[0], e.data.pos[1], e.data.pos[2]]
       var mesh = e.data.mesh
       if (TIMING) console.timeEnd('meshed ' + pos.join('|'))
-      self.load(pos, mesh)
+      self.loadMesh(pos, mesh)
     })
   } else {
     var createAOMesh = require('ao-mesher')
-    generate = function(pos, chunk, lod) {
+    mesher = function(pos, chunk, lod) {
       var mesh = createAOMesh(chunk)
-      if (mesh) self.load(pos, mesh)
+      if (mesh) self.loadMesh(pos, mesh)
     }
   }
-  return generate
+  return mesher
 }
 
 VoxelInfinite.prototype.createDefaultShader = function() {
