@@ -2,7 +2,7 @@ var ndarray = require('ndarray')
 var noise = require('perlin').noise
 
 var floor = 0
-var ceiling = 20
+var ceiling = 10
 var divisor = 50
 var width = 34
 noise.seed('voxel')
@@ -16,7 +16,7 @@ function scale( x, fromLow, fromHigh, toLow, toHigh ) {
 }
 
 module.exports = function(pos, done) {
-  // TODO: Needs to account for padding
+  // TODO: Needs to better account for padding
   var s = [34,34,34]
   var arr = ndarray(new Int32Array(s[0] * s[1] * s[2]), s)
   var startX = pos[0] * width
@@ -30,8 +30,7 @@ module.exports = function(pos, done) {
       var xidx = Math.abs((width + x % width) % width)
       var yidx = Math.abs((width + y % width) % width)
       var zidx = Math.abs((width + z % width) % width)
-      //arr.set(xidx, yidx, zidx, (1<<15) + parseInt(Math.random() * 99))
-      arr.set(xidx, yidx, zidx, (1<<15) + 23)
+      arr.set(xidx, yidx, zidx, (1<<15) + parseInt(Math.random() * 99))
     }
   })
   return done(null, arr)

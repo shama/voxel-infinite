@@ -1,5 +1,7 @@
 # voxel-infinite
 
+Render an infinite voxel world.
+
 ## example
 
 ```js
@@ -105,6 +107,9 @@ Returns the block id from the given `[x,y,z]` position in the data.
 
 ### `infinite.setBlock(position, id)`
 Sets the given `[x,y,z]` position to the block `id`.
+
+### `infinite.position(position)`
+Sets the `[x,y,z]` position (such as the position of the player) to load chunks around by the set distance.
 
 ### `infinite.createMesh(position, chunk)`
 Creates a mesh at the given `position` for the ndarray `chunk`.

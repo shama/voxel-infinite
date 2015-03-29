@@ -4,6 +4,7 @@ var div = require('vectors/div')(3)
 var createBuffer = require('gl-buffer')
 var createVAO = require('gl-vao')
 var continuous = require('ndarray-continuous')
+var ndarray = require('ndarray')
 
 //var stencil = require('ndarray-stencil')
 //var ndarray = require('ndarray')
@@ -118,7 +119,7 @@ VoxelInfinite.prototype.setBlock = function(pos, idx) {
     Math.floor(pos[1] / this.shape[1]),
     Math.floor(pos[2] / this.shape[2]),
   ]
-  // TODO: Set chunk to hasChanged  
+  // TODO: Set chunk to hasChanged
   this.data.chunk(chunkPos, function(err, chunk) {
     if (err) return
     self.createMesh(chunkPos, chunk)
@@ -128,6 +129,7 @@ VoxelInfinite.prototype.setBlock = function(pos, idx) {
 // Load a meshed chunk to be rendered
 VoxelInfinite.prototype.loadMesh = function(pos, vert_data) {
   var gl = this.gl
+
   var mesh = {
     //data: vert_data,
     pos: pos,
@@ -191,13 +193,15 @@ VoxelInfinite.prototype.draw = function(opts) {
     }
 
     if (shader) {
+      var pad = 0
       var m = mat4.create()
-      mat4.translate(m, m, [
-        mesh.pos[0] * this.shape[0],
-        mesh.pos[1] * this.shape[1],
-        mesh.pos[2] * this.shape[2],
-      ])
-      //mat4.scale(m, m, [2, 2, 2])
+      var pos = [
+        (mesh.pos[0] * (this.shape[0])),
+        (mesh.pos[1] * (this.shape[1])),
+        (mesh.pos[2] * (this.shape[2])),
+      ]
+      mat4.translate(m, m, pos)
+      //mat4.scale(m, m, [1,1,1])
       shader.uniforms.model = m
     }
 
