@@ -4,7 +4,8 @@
   "description": "",
   "main": "voxel-infinite.js",
   "scripts": {
-    "start": "budo example/example.js --live --verbose"
+    "start": "budo example/example.js --live --verbose",
+    "ghpages": "browserify example/example.js -o bundle.js"
   },
   "author": "Kyle Robinson Young <kyle@dontkry.com> (http://dontkry.com)",
   "license": "MIT",
